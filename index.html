@@ -1,0 +1,171 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steal a Monster Egg</title>
+<style>
+body{margin:0;overflow:hidden;background:#111;color:white;font-family:Arial}
+#ui{position:absolute;top:15px;left:15px;z-index:2;background:#15152ddd;padding:15px;border-radius:12px}
+#help{position:absolute;bottom:15px;left:15px;background:#15152ddd;padding:12px;border-radius:12px}
+canvas{display:block}
+</style>
+</head>
+<body>
+<div id="ui">
+<h2>🥚 Steal a Monster Egg</h2>
+<div id="money">💰 Geld: 0</div>
+<div id="eggs">🥚 Eier: 0</div>
+<div id="speed">🏃 Speed: 16</div>
+</div>
+<div id="help">WASD: Laufen | Maus: Kamera | E: Ei stehlen</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87ceeb);
+scene.fog=new THREE.Fog(0x87ceeb,35,100);
+
+const camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,200);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x557755,2));
+const sun=new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(10,20,10);
+sun.castShadow=true;
+scene.add(sun);
+
+const mat=(color)=>new THREE.MeshStandardMaterial({color});
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(100,100),mat(0x429c45));
+floor.rotation.x=-Math.PI/2;
+floor.receiveShadow=true;
+scene.add(floor);
+
+function block(x,y,z,sx,sy,sz,color){
+const o=new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz),mat(color));
+o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;
+scene.add(o);return o;
+}
+
+// Spieler
+const player=new THREE.Group();
+const body=new THREE.Mesh(new THREE.CapsuleGeometry(.45,.8,4,8),mat(0x2878ff));
+body.position.y=1;player.add(body);
+scene.add(player);
+player.position.set(0,0,10);
+
+// Base
+block(0,.5,17,12,1,10,0x2474c8);
+block(0,1.5,21,12,2,1,0x164a8a);
+block(-5,1.5,17,1,2,9,0x164a8a);
+block(5,1.5,17,1,2,9,0x164a8a);
+
+// Monster
+const monster=new THREE.Group();
+const monsterBody=new THREE.Mesh(new THREE.SphereGeometry(1.3,24,20),mat(0x9b32bd));
+monsterBody.position.y=1.3;monster.add(monsterBody);
+const eyeMat=mat(0xff2222);
+for(let x of [-.45,.45]){
+const eye=new THREE.Mesh(new THREE.SphereGeometry(.18),eyeMat);
+eye.position.set(x,1.6,-1);monster.add(eye);
+}
+scene.add(monster);
+monster.position.set(0,0,-12);
+
+// Egg
+const egg=new THREE.Mesh(new THREE.SphereGeometry(.65,24,24),mat(0xffd83d));
+egg.scale.y=1.3;egg.position.set(4,.8,-12);
+scene.add(egg);
+
+let money=0,eggs=0,speed=16,carrying=false;
+let chasing=false,won=false;
+let yaw=0,pitch=0;
+const keys={};
+addEventListener("keydown",e=>{
+keys[e.key.toLowerCase()]=true;
+if(e.key.toLowerCase()==="e")steal();
+});
+addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+renderer.domElement.addEventListener("click",()=>{
+renderer.domElement.requestPointerLock();
+});
+addEventListener("mousemove",e=>{
+if(document.pointerLockElement===renderer.domElement){
+yaw-=e.movementX*.002;
+pitch=Math.max(-.7,Math.min(.7,pitch-e.movementY*.002));
+}
+});
+
+function steal(){
+if(!carrying&&player.position.distanceTo(egg.position)<3){
+carrying=true;chasing=true;egg.visible=false;
+alert("Ei gestohlen! Bring es zur Base!");
+}
+}
+
+function updateUI(){
+document.getElementById("money").textContent="💰 Geld: "+money;
+document.getElementById("eggs").textContent="🥚 Eier: "+eggs;
+document.getElementById("speed").textContent="🏃 Speed: "+speed;
+}
+
+function animate(){
+requestAnimationFrame(animate);
+const dt=Math.min(clock.getDelta(),.05);
+const forward=new THREE.Vector3(-Math.sin(yaw),0,-Math.cos(yaw));
+const right=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
+let move=new THREE.Vector3();
+if(keys.w)move.add(forward);
+if(keys.s)move.sub(forward);
+if(keys.d)move.add(right);
+if(keys.a)move.sub(right);
+if(move.length()>0){
+move.normalize();
+player.position.addScaledVector(move,speed*.12*dt);
+}
+player.position.x=Math.max(-45,Math.min(45,player.position.x));
+player.position.z=Math.max(-45,Math.min(45,player.position.z));
+
+if(chasing&&carrying){
+const dir=player.position.clone().sub(monster.position);
+dir.y=0;
+if(dir.length()>0){
+dir.normalize();
+monster.position.addScaledVector(dir,7*dt);
+}
+if(monster.position.distanceTo(player.position)<1.8){
+carrying=false;chasing=false;egg.visible=true;
+egg.position.set(4,.8,-12);
+monster.position.set(0,0,-12);
+alert("Das Monster hat dich erwischt! Das Ei ist verloren.");
+}
+if(player.position.distanceTo(new THREE.Vector3(0,0,17))<5){
+carrying=false;chasing=false;eggs++;money+=100;
+egg.visible=true;egg.position.set(4,.8,-12);
+monster.position.set(0,0,-12);
+updateUI();
+alert("Geschafft! +100 Geld!");
+}
+}
+
+camera.position.set(
+player.position.x+Math.sin(yaw)*9,
+player.position.y+5+pitch*5,
+player.position.z+Math.cos(yaw)*9
+);
+camera.lookAt(player.position.x,player.position.y+1,player.position.z);
+renderer.render(scene,camera);
+}
+const clock=new THREE.Clock();
+updateUI();animate();
+addEventListener("resize",()=>{
+camera.aspect=innerWidth/innerHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+</html>
